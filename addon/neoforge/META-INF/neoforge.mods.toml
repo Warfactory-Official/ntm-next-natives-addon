@@ -1,0 +1,21 @@
+modLoader = "javafml"
+loaderVersion = "[0,)"
+license = "All Rights Reserved"
+
+[[mods]]
+modId = "hbm_natives"
+version = "${file.jarVersion}"
+displayName = "NTM Natives"
+iconFile = "hbm_natives.png"
+iconBlur = true
+bannerFile = "hbm_natives.png"
+description = "Native kernels for NTM's radiation field and worldgen noise."
+authors = "movblock"
+displayTest = "IGNORE_ALL_VERSION"
+
+[[dependencies.hbm_natives]]
+modId = "hbm"
+type = "required"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"

@@ -1,0 +1,138 @@
+name: Build native libraries
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install GCC 16.2 for Windows
+        run: |
+          set -euo pipefail
+          archive=x86_64-16.2.0-release-posix-seh-ucrt-rt_v14-rev1.7z
+          cd "$(cygpath -u "$RUNNER_TEMP")"
+          curl -fsSL --retry 3 -o "$archive" \
+            "https://github.com/niXman/mingw-builds-binaries/releases/download/16.2.0-rt_v14-rev1/$archive"
+          echo "26788998d615856a915e1eeacb0854fce87bc608fa9a0c16f96bcbfdcf3415c0  $archive" | sha256sum -c -
+          mkdir -p mingw
+          "/c/Program Files/7-Zip/7z.exe" x "$archive" -o"$PWD/mingw" -y > /dev/null
+          compiler=$(find "$PWD/mingw" -name g++.exe -print -quit)
+          test -n "$compiler"
+          cygpath -wa "$(dirname "$compiler")" >> "$GITHUB_PATH"
+      - name: Build Windows native library
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build
+          mkdir dist
+          cp build/ntm_next_native.dll dist/windows-x86_64-ntm_next_native.dll
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ntm-natives-windows
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  linux:
+    runs-on: ubuntu-latest
+    container: gcc:16.2.0-trixie
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build Linux native library
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends cmake ninja-build
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build
+          mkdir dist
+          cp build/ntm_next_native.so dist/linux-x86_64-libntm_next_native.so
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ntm-natives-linux
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  mac-arm64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build arm64 macOS native library
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install gcc
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc-16 \
+            -DCMAKE_CXX_COMPILER=g++-16 -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          cmake --build build
+          mkdir dist
+          cp build/ntm_next_native.dylib dist/osx-aarch_64-libntm_next_native.dylib
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ntm-natives-darwin-arm64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  mac-x86:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build x86_64 macOS native library
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          cmake --build build
+          mkdir dist
+          cp build/ntm_next_native.dylib dist/osx-x86_64-libntm_next_native.dylib
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ntm-natives-darwin-x86
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  mod:
+    needs: [windows, linux, mac-arm64, mac-x86]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ntm-natives-*
+          merge-multiple: true
+          path: natives
+      - name: Build the addon jars
+        run: sh gradlew build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: hbm-natives
+          path: '*/build/libs/hbm_natives-*.jar'
+          if-no-files-found: error
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes */build/libs/hbm_natives-*.jar

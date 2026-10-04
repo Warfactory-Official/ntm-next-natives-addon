@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "hbm_natives",
+  "version": "${version}",
+  "name": "NTM Natives",
+  "description": "Native kernels for NTM's radiation field and worldgen noise.",
+  "authors": [
+    "movblock"
+  ],
+  "license": "All Rights Reserved",
+  "icon": "hbm_natives.png",
+  "environment": "*",
+  "depends": {
+    "hbm": "${version}"
+  }
+}
